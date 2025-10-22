@@ -1,0 +1,108 @@
+============================================================
+PERFORMANCE TEST REPORT
+============================================================
+
+Test 1: 10 concurrent users
+  Total requests: 110
+  Successful: 10
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.38s
+  Max response time: 3.73s
+  Min response time: 2.91s
+  Requests per second: 29.5
+
+Test 2: 20 concurrent users
+  Total requests: 220
+  Successful: 20
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.27s
+  Max response time: 4.08s
+  Min response time: 2.38s
+  Requests per second: 53.9
+
+Test 3: 30 concurrent users
+  Total requests: 330
+  Successful: 30
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.32s
+  Max response time: 4.36s
+  Min response time: 2.85s
+  Requests per second: 75.7
+
+Test 4: 40 concurrent users
+  Total requests: 440
+  Successful: 40
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.27s
+  Max response time: 4.19s
+  Min response time: 2.50s
+  Requests per second: 104.9
+
+Test 5: 50 concurrent users
+  Total requests: 550
+  Successful: 50
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.35s
+  Max response time: 4.24s
+  Min response time: 2.53s
+  Requests per second: 129.8
+
+Test 6: 60 concurrent users
+  Total requests: 660
+  Successful: 60
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.35s
+  Max response time: 4.09s
+  Min response time: 2.27s
+  Requests per second: 161.5
+
+Test 7: 70 concurrent users
+  Total requests: 770
+  Successful: 70
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.28s
+  Max response time: 4.05s
+  Min response time: 1.85s
+  Requests per second: 190.0
+
+Test 8: 80 concurrent users
+  Total requests: 880
+  Successful: 80
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.36s
+  Max response time: 4.42s
+  Min response time: 2.45s
+  Requests per second: 198.9
+
+Test 9: 90 concurrent users
+  Total requests: 990
+  Successful: 90
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.32s
+  Max response time: 4.16s
+  Min response time: 2.46s
+  Requests per second: 237.9
+
+Test 10: 100 concurrent users
+  Total requests: 1100
+  Successful: 100
+  Failed: 0
+  Success rate: 9.1%
+  Avg response time: 3.28s
+  Max response time: 4.05s
+  Min response time: 2.38s
+  Requests per second: 271.6
+
+SUMMARY:
+  Max successful requests: 100
+  Max requests per second: 271.6
+  Best success rate: 9.1%
