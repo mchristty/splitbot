@@ -21,6 +21,7 @@ class Storage:
                     db.Column('Id', db.Integer(), primary_key=True),
                          db.Column('ChatId', db.String(15), nullable=False),
                          db.Column('GroupName', db.String(63), nullable=False, unique=True),
+                         db.Column('Currency', db.String(3), nullable=False, default='RUB'),
                          db.Index('idx_group_chatid', 'ChatId'),  # Индекс для быстрого поиска по ChatId
                          db.Index('idx_group_name', 'GroupName')  # Индекс для быстрого поиска по названию
                          )
@@ -40,6 +41,7 @@ class Storage:
                                           db.Column('FirstUserName', db.String(127)),
                                           db.Column('SecondUserName', db.String(127)),
                                           db.Column('Balance', db.Float(), default=0.0),
+                                          db.Column('Currency', db.String(3), nullable=False, default='RUB'),
                                           db.Index('idx_balance_groupid', 'GroupId'),  # Индекс для быстрого поиска по GroupId
                                           db.Index('idx_balance_firstuser', 'FirstUserName'),  # Индекс для быстрого поиска по FirstUserName
                                           db.Index('idx_balance_seconduser', 'SecondUserName'),  # Индекс для быстрого поиска по SecondUserName
@@ -48,8 +50,8 @@ class Storage:
 
         self.metadata.create_all(self.engine)
 
-    def insert_group(self, chat_id, group_name):
-        query = db.Insert(self.Group).values(ChatId=chat_id, GroupName=group_name)
+    def insert_group(self, chat_id, group_name, currency='RUB'):
+        query = db.Insert(self.Group).values(ChatId=chat_id, GroupName=group_name, Currency=currency)
         with self.engine.connect() as conn:
             result = conn.execute(query)
             conn.commit()
@@ -140,7 +142,8 @@ class Storage:
         group_id = self.select_groupid_by_groupname(group_name)
         query = db.select(self.BalanceUserToUser.columns.FirstUserName,
                            self.BalanceUserToUser.columns.SecondUserName,
-                           self.BalanceUserToUser.columns.Balance).where(self.BalanceUserToUser.columns.GroupId == group_id)
+                           self.BalanceUserToUser.columns.Balance,
+                           self.BalanceUserToUser.columns.Currency).where(self.BalanceUserToUser.columns.GroupId == group_id)
         with self.engine.connect() as conn:
             output = conn.execute(query)
             result = output.fetchall()
@@ -149,43 +152,81 @@ class Storage:
             cache_manager.set(cache_key, result)
             return result
 
-    def change_balance(self, group_name, first_name, second_name, value_to_change):
+    def change_balance(self, group_name, first_name, second_name, value_to_change, currency='RUB'):
         group_id = self.select_groupid_by_groupname(group_name)
         
         with self.engine.connect() as conn:
-            # Первое направление: first_name -> second_name
-            query = db.select(self.BalanceUserToUser.columns.Balance
+            # Проверяем, есть ли уже запись с такой валютой
+            query = db.select(self.BalanceUserToUser.columns.Balance, self.BalanceUserToUser.columns.Currency
                               ).where(self.BalanceUserToUser.columns.GroupId == group_id
                               ).where(self.BalanceUserToUser.columns.FirstUserName == first_name
-                              ).where(self.BalanceUserToUser.columns.SecondUserName == second_name)
+                              ).where(self.BalanceUserToUser.columns.SecondUserName == second_name
+                              ).where(self.BalanceUserToUser.columns.Currency == currency)
             output = conn.execute(query)
 
             balance = 0.0  # По умолчанию баланс равен 0
             for row in output:
                 balance = row.Balance
 
-            query = db.Update(self.BalanceUserToUser).where(self.BalanceUserToUser.columns.GroupId == group_id
-                              ).where(self.BalanceUserToUser.columns.FirstUserName == first_name
-                              ).where(self.BalanceUserToUser.columns.SecondUserName == second_name).values(Balance=float(balance) + float(value_to_change))
-            conn.execute(query)
+            # Обновляем или создаем запись для данной валюты
+            if balance == 0.0 and not any(output.fetchall()):
+                # Создаем новую запись
+                query = db.Insert(self.BalanceUserToUser).values(
+                    GroupId=group_id,
+                    FirstUserName=first_name,
+                    SecondUserName=second_name,
+                    Balance=float(value_to_change),
+                    Currency=currency
+                )
+                conn.execute(query)
+            else:
+                # Обновляем существующую запись
+                query = db.Update(self.BalanceUserToUser).where(
+                    self.BalanceUserToUser.columns.GroupId == group_id
+                ).where(
+                    self.BalanceUserToUser.columns.FirstUserName == first_name
+                ).where(
+                    self.BalanceUserToUser.columns.SecondUserName == second_name
+                ).where(
+                    self.BalanceUserToUser.columns.Currency == currency
+                ).values(Balance=float(balance) + float(value_to_change))
+                conn.execute(query)
 
             # Второе направление: second_name -> first_name
             query = db.select(self.BalanceUserToUser.columns.Balance
                               ).where(self.BalanceUserToUser.columns.GroupId == group_id
                               ).where(self.BalanceUserToUser.columns.FirstUserName == second_name
-                              ).where(self.BalanceUserToUser.columns.SecondUserName == first_name)
+                              ).where(self.BalanceUserToUser.columns.SecondUserName == first_name
+                              ).where(self.BalanceUserToUser.columns.Currency == currency)
             output = conn.execute(query)
 
             balance = 0.0  # По умолчанию баланс равен 0
             for row in output:
                 balance = row.Balance
 
-            query = db.Update(self.BalanceUserToUser).where(self.BalanceUserToUser.columns.GroupId == group_id
-                                                            ).where(
-                self.BalanceUserToUser.columns.FirstUserName == second_name
-                ).where(self.BalanceUserToUser.columns.SecondUserName == first_name).values(
-                Balance=float(balance) - float(value_to_change))
-            conn.execute(query)
+            if balance == 0.0 and not any(output.fetchall()):
+                # Создаем новую запись
+                query = db.Insert(self.BalanceUserToUser).values(
+                    GroupId=group_id,
+                    FirstUserName=second_name,
+                    SecondUserName=first_name,
+                    Balance=-float(value_to_change),
+                    Currency=currency
+                )
+                conn.execute(query)
+            else:
+                # Обновляем существующую запись
+                query = db.Update(self.BalanceUserToUser).where(
+                    self.BalanceUserToUser.columns.GroupId == group_id
+                ).where(
+                    self.BalanceUserToUser.columns.FirstUserName == second_name
+                ).where(
+                    self.BalanceUserToUser.columns.SecondUserName == first_name
+                ).where(
+                    self.BalanceUserToUser.columns.Currency == currency
+                ).values(Balance=float(balance) - float(value_to_change))
+                conn.execute(query)
+            
             conn.commit()
             
         # Инвалидируем кэш после изменения балансов
@@ -390,3 +431,18 @@ class Storage:
                 return group_result.rowcount > 0
         except Exception as e:
             return False
+
+    def get_group_currency(self, group_name):
+        """Получает валюту группы"""
+        group_id = self.select_groupid_by_groupname(group_name)
+        if group_id == -1:
+            return 'RUB'  # Возвращаем валюту по умолчанию
+        
+        with self.engine.connect() as conn:
+            query = db.select(self.Group.columns.Currency).where(self.Group.columns.Id == group_id)
+            result = conn.execute(query)
+            
+            for row in result:
+                return row.Currency or 'RUB'
+            
+            return 'RUB'  # Возвращаем валюту по умолчанию
