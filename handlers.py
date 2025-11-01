@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from aiogram import types, F, Router
-from aiogram.enums import ParseMode
+from aiogram.enums import ParseMode, ChatType
 from aiogram.types import Message, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
 from aiogram.filters import Command, BaseFilter
 from aiogram.fsm.context import FSMContext
@@ -30,21 +30,62 @@ class GroupStates(StatesGroup):
 
 @router.message(Command("start"))
 async def start_handler(msg: Message):
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="📋 Мои группы", callback_data="show_groups")],
-        [InlineKeyboardButton(text="➕ Создать группу", callback_data="create_group")],
-        [InlineKeyboardButton(text="👥 Добавить участника", callback_data="add_member")],
-        [InlineKeyboardButton(text="❌ Удалить участника", callback_data="remove_member")],
-        [InlineKeyboardButton(text="💰 Записать трату", callback_data="add_payment")],
-        [InlineKeyboardButton(text="❓ Помощь", callback_data="help")]
-    ])
+    # Проверяем, есть ли у пользователя группы (чтобы понять, это первый контакт или нет)
+    groups = storage.select_group_from_chat_id(msg.chat.id)
     
-    await msg.answer(
-        "👋 <b>Привет! Я помогу вам записывать все траты</b>\n\n"
-        "Выберите действие:",
-        reply_markup=keyboard,
-        parse_mode=ParseMode.HTML
-    )
+    if len(groups) == 0 and msg.chat.type == ChatType.PRIVATE:
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="▶️ Начать", callback_data="main_menu")]
+        ])
+        await msg.answer(
+            "👋 <b>Привет!</b>\n\n"
+            "Этот бот поможет тебе разделять расходы в поездках и не тратить на это много времени\n\n"
+            "<b>Чтобы начать:</b>\n\n"
+            "1️⃣ Добавь бота в чат поездки\n"
+            "2️⃣ Создай группу\n"
+            "3️⃣ Добавь друзей\n"
+            "4️⃣ Записывай траты",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+    else:  # Если есть группы, показываем полное меню
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Мои группы", callback_data="show_groups")],
+            [InlineKeyboardButton(text="➕ Создать группу", callback_data="create_group")],
+            [InlineKeyboardButton(text="👥 Добавить участника", callback_data="add_member")],
+            [InlineKeyboardButton(text="❌ Удалить участника", callback_data="remove_member")],
+            [InlineKeyboardButton(text="💰 Записать трату", callback_data="add_payment")],
+            [InlineKeyboardButton(text="❓ Помощь", callback_data="help")]
+        ])
+        
+        await msg.answer(
+            "👋 <b>Выбери действие: </b>\n\n",
+            reply_markup=keyboard,
+            parse_mode=ParseMode.HTML
+        )
+
+
+@router.message(F.new_chat_members)
+async def bot_added_to_group(msg: Message):
+    """Обработчик добавления бота в группу"""
+    # Проверяем, был ли добавлен именно наш бот
+    bot_username = await msg.bot.get_me()
+    
+    for new_member in msg.new_chat_members:
+        # Проверяем, что добавлен именно бот (по ID или username)
+        if new_member.id == bot_username.id:
+            # Отправляем приветственное сообщение в группу
+            await msg.answer(
+                "👋 <b>Привет!</b>\n\n"
+                "Этот бот поможет тебе разделять расходы в поездках и не тратить на это много времени\n\n"
+                "<b>Чтобы начать:</b>\n\n"
+                "1️⃣ Нажми /start\n"
+                "2️⃣ Создай группу\n"
+                "3️⃣ Добавь друзей\n"
+                "4️⃣ Записывай траты",
+                parse_mode=ParseMode.HTML
+            )
+            break
 
 
 @router.message(Command("help"))
@@ -278,6 +319,7 @@ async def payment_handler(msg: Message):
 # Обработчики callback-запросов для кнопок
 @router.callback_query(F.data == "main_menu")
 async def main_menu_callback(callback: CallbackQuery):
+    # Показываем главное меню
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="📋 Мои группы", callback_data="show_groups")],
         [InlineKeyboardButton(text="➕ Создать группу", callback_data="create_group")],
@@ -655,7 +697,7 @@ async def select_group_for_payment_callback(callback: CallbackQuery, state: FSMC
         f"<i>username сумма username сумма ... [валюта]</i>\n\n"
         f"Примеры:\n"
         f"• <i>alice 1000</i> или <i>@alice 1000</i>\n"
-        f"• <i>alice 100 USD</i> (с валютой)\n"
+        f"• <i>alice 100 USD</i> (с валютой)",
         reply_markup=keyboard,
         parse_mode=ParseMode.HTML
     )
@@ -1505,3 +1547,28 @@ async def process_parts_distribution(msg: Message, state: FSMContext):
             reply_markup=keyboard,
             parse_mode=ParseMode.HTML
         )
+
+
+# Обработчик для произвольных текстовых сообщений (показывает приветствие при первом контакте)
+@router.message(F.text & ~F.text.startswith("/"))
+async def default_text_handler(msg: Message, state: FSMContext):
+    # Проверяем, что пользователь не находится в FSM состоянии
+    current_state = await state.get_state()
+    if current_state is None:
+        # Не показываем приветствие в группах
+        if msg.chat.type in [ChatType.GROUP, ChatType.SUPERGROUP]:
+            return
+        
+        # Проверяем, есть ли у пользователя группы (чтобы понять, это первый раз или нет)
+        groups = storage.select_group_from_chat_id(msg.chat.id)
+        if not groups:  # Если нет групп, значит это первый раз - показываем простое приветствие
+            await msg.answer(
+                "👋 <b>Привет!</b>\n\n"
+                "Этот бот поможет тебе разделять расходы в поездках и не тратить на это много времени\n\n"
+                "<b>Чтобы начать:</b>\n\n"
+                "1️⃣ Добавь бота в чат поездки\n"
+                "2️⃣ Создай группу\n"
+                "3️⃣ Добавь друзей\n"
+                "4️⃣ Записывай траты",
+                parse_mode=ParseMode.HTML
+            )

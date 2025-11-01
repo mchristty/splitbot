@@ -20,6 +20,17 @@ async def main():
     dp.include_router(router)
     await bot.delete_webhook(drop_pending_updates=True)
     
+    # Устанавливаем описание бота (текст над кнопкой "Начать")
+    bot_description = (
+        "👋 Привет!\n\n"
+        "Этот бот поможет тебе разделять расходы в поездках и не тратить на это много времени"
+    )
+    try:
+        await bot.set_my_description(description=bot_description)
+        print("✅ Описание бота установлено")
+    except Exception as e:
+        print(f"⚠️ Не удалось установить описание бота: {e}")
+    
     await dp.start_polling(bot, allowed_updates=dp.resolve_used_update_types())
 
 
